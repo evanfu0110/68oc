@@ -30,6 +30,7 @@ async function main() {
   await patchTuiSpecial(src, dict)
   await patchCliFiles(src, dict, enzh)
   await patchCommandIndex(src, dict)
+  await patchBranding(src)
 
   process.stdout.write("Installing dependencies...\n")
   await $`bun install --cwd ${src}`
@@ -138,11 +139,31 @@ async function patchTuiFiles(src: string, dict: Record<string, string>, enzh: Re
     // Match each English phrase inside string literals
     for (const [en, zh] of sortedEnZh) {
       const escaped = escapeRegex(en)
-      // Replace "English text" → "Chinese text" (exact match inside quotes)
       const regex = new RegExp(`"${escaped}"`, "gi")
-      if (regex.test(content)) {
-        content = content.replace(regex, `"${zh}"`)
-      }
+      if (regex.test(content)) content = content.replace(regex, `"${zh}"`)
+    }
+
+    // Also replace JSX text nodes: >word< or >word </span>
+    const jsxReplacements: [string, string][] = [
+      [">agents<", ">智能体<"],
+      [">agents </span>", ">智能体</span>"],
+      [">commands<", ">命令<"],
+      [">commands </span>", ">命令</span>"],
+      [">exit shell mode</span>", ">退出 Shell 模式</span>"],
+      [">Thought<", ">思考<"],
+      [">Thought</span>", ">思考</span>"],
+      [">Context<", ">上下文<"],
+      [">Context</b>", ">上下文</b>"],
+    ]
+    // Also handle sidebar context.tsx text nodes (text after expressions)
+    if (relPath.endsWith("sidebar/context.tsx")) {
+      content = content
+        .replace(/\} tokens</g, "} 个 token<")
+        .replace(/\}% used</g, "}% 已使用<")
+        .replace(/\} spent</g, "} 已花费<")
+    }
+    for (const [from, to] of jsxReplacements) {
+      if (content.includes(from)) content = content.replaceAll(from, to)
     }
 
     if (content !== orig) {
@@ -237,6 +258,24 @@ async function patchTuiSpecial(src: string, dict: Record<string, string>) {
       ["Toggle console", "tui.cmd.toggle_console"],
       ["Write heap snapshot", "tui.cmd.write_heap_snapshot"],
       ["Suspend terminal", "tui.cmd.suspend_terminal"],
+      ["Switch org", "tui.cmd.switch_org"],
+      ["No variants available", "tui.no_variants_available"],
+      ["Switch to light mode", "tui.cmd.switch_to_light_mode"],
+      ["Switch to dark mode", "tui.cmd.switch_to_dark_mode"],
+      ["Unlock theme mode", "tui.cmd.unlock_theme_mode"],
+      ["Lock theme mode", "tui.cmd.lock_theme_mode"],
+      ["Disable terminal title", "tui.cmd.disable_terminal_title"],
+      ["Enable terminal title", "tui.cmd.enable_terminal_title"],
+      ["Disable animations", "tui.cmd.disable_animations"],
+      ["Enable animations", "tui.cmd.enable_animations"],
+      ["Disable file context", "tui.cmd.disable_file_context"],
+      ["Enable file context", "tui.cmd.enable_file_context"],
+      ["Disable diff wrapping", "tui.cmd.disable_diff_wrapping"],
+      ["Enable diff wrapping", "tui.cmd.enable_diff_wrapping"],
+      ["Disable paste summary", "tui.cmd.disable_paste_summary"],
+      ["Enable paste summary", "tui.cmd.enable_paste_summary"],
+      ["Disable session directory filtering", "tui.cmd.disable_session_directory_filter"],
+      ["Enable session directory filtering", "tui.cmd.enable_session_directory_filter"],
     ]
     for (const [en, key] of titles) {
       const zh = dict[key]
@@ -253,11 +292,13 @@ async function patchTuiSpecial(src: string, dict: Record<string, string>) {
     let c = content
     const descs: [string, string][] = [
       ["Export session to editor", "tui.export.to_editor"],
+      ["Export session transcript", "tui.session.export_transcript"],
       ["Copy session transcript", "tui.session.copy_transcript"],
       ["Create a new session", "tui.session.create"],
       ["List all sessions", "tui.session.list"],
       ["Show session timeline", "tui.session.timeline"],
       ["Fork session from message", "tui.session.fork"],
+      ["Fork session", "tui.session.fork"],
       ["Rename session", "tui.session.rename"],
       ["Delete session", "tui.session.delete"],
       ["Share current session", "tui.session.share"],
@@ -270,6 +311,9 @@ async function patchTuiSpecial(src: string, dict: Record<string, string>) {
       ["Go to previous child session", "tui.session.child_previous"],
       ["Go to parent session", "tui.session.parent"],
       ["Pin or unpin session in the session list", "tui.session.pin_unpin"],
+      ["Open diff viewer", "tui.cmd.open_diff_viewer"],
+      ["View debug info", "tui.cmd.debug_info"],
+      ["Open editor", "tui.cmd.open_editor"],
     ]
     for (const [en, key] of descs) {
       const zh = dict[key]
@@ -344,6 +388,59 @@ async function patchCommandIndex(src: string, dict: Record<string, string>) {
     }
     await Bun.file(filePath).write(content)
     process.stdout.write(`  CMD: command/index.ts\n`)
+  }
+}
+
+// ========== Branding: replace "opencode" logo/title with "68OC" ==========
+
+async function patchBranding(src: string) {
+  const ROOT = src
+
+  // Replace ASCII art logo (logo.ts)
+  const logoPath = path.join(ROOT, "packages/tui/src/logo.ts")
+  if (fs.existsSync(logoPath)) {
+    await Bun.file(logoPath).write(`export const logo = {
+  left: ["", "", ""],
+  right: [
+    "▄▀▀▄  █▀▀█  █▀▀█  █▀▀▀",
+    "█▄▄█  █▀▀█  █▀▀█  █___",
+    "▀▀▀   ▀▀▀▀  ▀▀▀▀  ▀▀▀▀",
+  ],
+}
+
+export const go = {
+  left: ["", "", ""],
+  right: ["▀▀▄ █▀▀█", "█▄█ █▀▀█", "▀▀  ▀▀▀▀"],
+}
+
+export const marks = "_^~,"
+`)
+    process.stdout.write(`  BRAND: logo.ts → 68OC ASCII art\n`)
+  }
+
+  // Replace terminal title
+  await patchFile(ROOT, "packages/tui/src/attention.ts", (content) => {
+    let c = content
+    if (c.includes('DEFAULT_TITLE = "opencode"')) {
+      c = c.replace('DEFAULT_TITLE = "opencode"', 'DEFAULT_TITLE = "68OC"')
+      return c
+    }
+    return null
+  })
+
+  // Replace "opencode" → "68oc" in user-visible strings (not import paths)
+  for (const rel of [
+    "packages/tui/src/util/presentation.ts",
+    "packages/tui/src/util/error.ts",
+  ]) {
+    await patchFile(ROOT, rel, (content) => {
+      let c = content
+      // Replace "opencode" standalone (not part of @opencode-ai or "opencode.json" etc.)
+      c = c.replace(/(?<!@)`opencode`/g, "`68oc`")
+      c = c.replace(/(?<!@)"opencode"/g, '"68oc"')
+      if (c !== content) return c
+      return null
+    })
   }
 }
 

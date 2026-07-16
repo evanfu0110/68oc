@@ -1310,5 +1310,13 @@
   "tui.agent.build_description": "默认智能体。根据配置的权限执行工具。",
   "tui.agent.plan_description": "规划模式。禁止所有编辑工具。",
   "tui.thinking_label": "思考中：",
-  "tui.thinking": "思考中"
+  "tui.thinking": "思考中",
+  "tui.cmd.open_diff_viewer": "打开差异查看器",
+  "tui.cmd.debug_info": "查看调试信息",
+  "tui.cmd.open_editor": "打开编辑器",
+  "tui.cmd.move_project_dir": "移动到另一个项目目录",
+  "tui.session.export_transcript": "导出会话转录",
+  "tui.cmd.toggle_debug": "切换调试面板",
+  "tui.cmd.heap_snapshot": "写入堆快照",
+  "tui.expired": "已过期"
 }
