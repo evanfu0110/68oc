@@ -119,44 +119,33 @@ async function patchTuiFiles(src: string, dict: Record<string, string>, enzh: Re
   const tuiDir = path.join(src, "packages/tui/src")
   if (!fs.existsSync(tuiDir)) return
 
-  // Build English→Chinese lookup: key last segment → Chinese
-  const enToZh: Record<string, string> = {}
-  for (const [key, zh] of Object.entries(dict)) {
-    const last = key.split(".").pop()!.replace(/_/g, " ").toLowerCase()
-    enToZh[last] = zh
-  }
-  // Also add from en-zh-map
-  for (const [en, zh] of Object.entries(enzh)) {
-    enToZh[en.toLowerCase()] = zh
-  }
-
   const files: string[] = []
   walkDir(tuiDir, files)
 
-  // Sort english keys longest-first to match longer strings first
-  const sortedKeys = Object.keys(enToZh).sort((a, b) => b.length - a.length)
+  // Only use en-zh-map entries (complete English phrases), NOT dictionary key segments
+  // This avoids false positives on short/generic words like "path", "import", etc.
+  const sortedEnZh = Object.entries(enzh)
+    .filter(([en]) => en.length >= 10)
+    .sort((a, b) => b[0].length - a[0].length)
 
   for (const file of files) {
     if (file.endsWith(".test.ts") || file.endsWith(".spec.ts")) continue
     let content = await Bun.file(file).text()
     let modified = false
+    const orig = content
     const relPath = path.relative(src, file)
 
-    // Strategy: replace "English text" → "Chinese text" for exact matches
-    for (const enLower of sortedKeys) {
-      if (enLower.length < 4) continue
-      const zh = enToZh[enLower]
-      if (!zh) continue
-
-      // Try to match the English text case-insensitively in quotes
-      const regex = new RegExp(`"${escapeRegex(enLower)}"`, "gi")
+    // Match each English phrase inside string literals
+    for (const [en, zh] of sortedEnZh) {
+      const escaped = escapeRegex(en)
+      // Replace "English text" → "Chinese text" (exact match inside quotes)
+      const regex = new RegExp(`"${escaped}"`, "gi")
       if (regex.test(content)) {
         content = content.replace(regex, `"${zh}"`)
-        modified = true
       }
     }
 
-    if (modified) {
+    if (content !== orig) {
       await Bun.file(file).write(content)
       process.stdout.write(`  TUI: ${relPath}\n`)
     }
