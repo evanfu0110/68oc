@@ -1,0 +1,8 @@
+node_modules/
+.work/
+out/
+dist/
+coverage-report.json
+*.log
+.DS_Store
+Thumbs.db

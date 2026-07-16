@@ -1,0 +1,100 @@
+name: Build 68oc
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Upstream tag to build (e.g. v1.18.2)'
+        required: true
+        default: 'v1.18.2'
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly: Monday 02:00 UTC
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      latest_tag: ${{ steps.get-tag.outputs.latest_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: get-tag
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/anomalyco/opencode/releases/latest | jq -r '.tag_name')
+          echo "latest_tag=$LATEST" >> $GITHUB_OUTPUT
+
+  build:
+    needs: check-version
+    runs-on: windows-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.check-version.outputs.latest_tag != '' }}
+    env:
+      UPSTREAM_TAG: ${{ github.event.inputs.tag || needs.check-version.outputs.latest_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install system deps (Visual C++ build tools)
+        run: |
+          # VS2022 tools are pre-installed on windows-latest
+          Write-Output "VS2022 build tools available"
+
+      - name: Clone and patch upstream
+        run: |
+          bun src/apply.ts $env:UPSTREAM_TAG
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: 68oc-windows-x64
+          path: out/68oc.exe
+
+      - name: Smoke test
+        run: |
+          .\out\68oc.exe --version
+          .\out\68oc.exe --help
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: 68oc-windows-x64
+          path: artifacts
+
+      - name: Clean up old releases (keep only latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CURRENT_TAG="68oc-${{ github.event.inputs.tag || needs.check-version.outputs.latest_tag }}"
+          # Delete current tag first so we can recreate it
+          gh release delete "$CURRENT_TAG" --repo ${{ github.repository }} --yes 2>/dev/null || true
+          git push origin --delete "$CURRENT_TAG" 2>/dev/null || true
+          # Delete all older releases
+          for tag in $(gh release list --repo ${{ github.repository }} --limit 100 --json tagName --jq '.[].tagName' 2>/dev/null); do
+            if [ "$tag" != "$CURRENT_TAG" ]; then
+              echo "Deleting old release: $tag"
+              gh release delete "$tag" --repo ${{ github.repository }} --yes 2>/dev/null || true
+              git push origin --delete "$tag" 2>/dev/null || true
+            fi
+          done
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: 68oc-${{ github.event.inputs.tag || needs.check-version.outputs.latest_tag }}
+          name: 68oc ${{ github.event.inputs.tag || needs.check-version.outputs.latest_tag }}
+          body: |
+            # 68oc - OpenCode 中文 CLI 版
+
+            基于上游 [anomalyco/opencode](${{ github.event.inputs.tag || needs.check-version.outputs.latest_tag }})
+
+            仅包含 CLI 命令行版，启动命令: `68oc`
+          files: artifacts/68oc.exe
+          makeLatest: true
+          fail_on_unmatched_files: false
