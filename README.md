@@ -12,7 +12,22 @@
 
 ## 下载
 
-前往 [Releases](https://github.com/oc68/68oc/releases) 下载最新版 `68oc.exe`。
+## 安装
+
+```bash
+# 通过 npm 安装（推荐）
+npm install -g 68oc
+
+# 通过 bun 安装
+bun install -g 68oc
+
+# 直接运行（无需安装）
+npx 68oc
+# 或
+bun x 68oc
+```
+
+或前往 [Releases](https://github.com/oc68/68oc/releases) 下载 `68oc.exe` 并加入 PATH。
 
 ## 使用
 

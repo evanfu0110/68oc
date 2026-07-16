@@ -84,6 +84,51 @@ jobs:
             fi
           done
 
+      - name: Prepare npm package
+        shell: bash
+        run: |
+          PKGVER="${{ github.event.inputs.tag || needs.check-version.outputs.latest_tag }}"
+          PKGVER="${PKGVER#v}"
+          mkdir -p npm-pkg/bin
+          cp bin/68oc npm-pkg/bin/
+          cp artifacts/68oc.exe npm-pkg/bin/
+          node -e "
+            const pkg = {
+              name: '68oc',
+              version: process.env.PKGVER,
+              description: 'OpenCode Chinese CLI - AI-powered development tool',
+              bin: { '68oc': './bin/68oc' },
+              os: ['win32'],
+              cpu: ['x64'],
+              engines: { node: '>=18' },
+              license: 'MIT',
+              repository: 'https://github.com/oc68/68oc',
+              homepage: 'https://github.com/oc68/68oc'
+            }
+            require('fs').writeFileSync('npm-pkg/package.json', JSON.stringify(pkg, null, 2) + '\n')
+          "
+          cp LICENSE npm-pkg/
+          cp README.md npm-pkg/
+
+      - name: Publish to npm
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd npm-pkg
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
+          npm publish --access public 2>/dev/null || echo "npm publish skipped (token not configured or version exists)"
+
+      - name: Publish to GitHub Packages
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd npm-pkg
+          echo "//npm.pkg.github.com/:_authToken=${GH_TOKEN}" > .npmrc
+          node -e "const p=JSON.parse(require('fs').readFileSync('package.json','utf8'));p.name='@oc68/68oc';require('fs').writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+          npm publish --registry=https://npm.pkg.github.com 2>/dev/null || echo "GitHub Packages publish skipped"
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -95,6 +140,19 @@ jobs:
             基于上游 [anomalyco/opencode](${{ github.event.inputs.tag || needs.check-version.outputs.latest_tag }})
 
             仅包含 CLI 命令行版，启动命令: `68oc`
-          files: artifacts/68oc.exe
+
+            ## 安装方式
+
+            ### npm / bun
+            ```bash
+            npm install -g 68oc
+            # 或
+            bun install -g 68oc
+            ```
+
+            ### 直接下载
+            下载 `68oc.exe` 并加入 PATH 即可使用。
+          files: |
+            artifacts/68oc.exe
           makeLatest: true
           fail_on_unmatched_files: false
